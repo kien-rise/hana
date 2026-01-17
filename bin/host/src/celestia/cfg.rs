@@ -5,8 +5,7 @@ use clap::Parser;
 use hana_oracle::hint::HintWrapper;
 use kona_genesis::RollupConfig;
 use kona_host::{
-    eth::rpc_provider,
-    single::{SingleChainHost, SingleChainHostError, SingleChainLocalInputs, SingleChainProviders},
+    single::{SingleChainHost, SingleChainHostError, SingleChainLocalInputs},
     DiskKeyValueStore, MemoryKeyValueStore, OfflineHostBackend, OnlineHostBackend,
     OnlineHostBackendCfg, PreimageServer, SharedKeyValueStore, SplitKeyValueStore,
 };
@@ -19,9 +18,7 @@ use anyhow::{anyhow, Result};
 use kona_preimage::{
     BidirectionalChannel, Channel, HintReader, HintWriter, OracleReader, OracleServer,
 };
-use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use kona_std_fpvm::{FileChannel, FileDescriptor};
-use op_alloy_network::Optimism;
 use std::sync::Arc;
 use tokio::{
     sync::RwLock,
@@ -137,10 +134,7 @@ impl CelestiaChainHost {
 
     /// Returns `true` if the host is running in offline mode.
     pub const fn is_offline(&self) -> bool {
-        self.single_host.l1_node_address.is_none()
-            && self.single_host.l2_node_address.is_none()
-            && self.single_host.l1_beacon_address.is_none()
-            && self.single_host.data_dir.is_some()
+        self.single_host.is_offline()
     }
 
     /// Reads the [RollupConfig] from the file system and returns it as a string.
@@ -183,27 +177,7 @@ impl CelestiaChainHost {
 
     /// Creates the providers required for the host backend.
     async fn create_providers(&self) -> Result<CelestiaChainProviders, SingleChainHostError> {
-        let l1_provider = rpc_provider(
-            self.single_host
-                .l1_node_address
-                .as_ref()
-                .ok_or(SingleChainHostError::Other("Provider must be set"))?,
-        )
-        .await;
-        let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
-            self.single_host
-                .l1_beacon_address
-                .clone()
-                .ok_or(SingleChainHostError::Other("Beacon API URL must be set"))?,
-        ))
-        .await;
-        let l2_provider = rpc_provider::<Optimism>(
-            self.single_host
-                .l2_node_address
-                .as_ref()
-                .ok_or(SingleChainHostError::Other("L2 node address must be set"))?,
-        )
-        .await;
+        let inner_providers = self.single_host.create_providers().await?;
 
         let celestia_client =
             celestia_rpc::Client::new(
@@ -224,11 +198,7 @@ impl CelestiaChainHost {
         let celestia_provider = OnlineCelestiaProvider::new(celestia_client, namespace);
 
         Ok(CelestiaChainProviders {
-            inner_providers: SingleChainProviders {
-                l1: l1_provider,
-                blobs: blob_provider,
-                l2: l2_provider,
-            },
+            inner_providers,
             celestia: celestia_provider,
         })
     }
