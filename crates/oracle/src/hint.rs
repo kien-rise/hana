@@ -1,7 +1,5 @@
-use core::{fmt, str::FromStr};
+use kona_proof::HintType;
 
-use alloc::string::String;
-use kona_proof::{errors::HintParsingError, HintType};
 // Add your HintWrapper
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HintWrapper {
@@ -9,29 +7,22 @@ pub enum HintWrapper {
     CelestiaDA,
 }
 
-impl FromStr for HintWrapper {
-    type Err = HintParsingError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Try parsing as standard HintType first
-        if let Ok(standard) = HintType::from_str(s) {
-            return Ok(HintWrapper::Standard(standard));
-        }
-
-        // Check for our custom types
-        match s {
-            "celestia-da" => Ok(HintWrapper::CelestiaDA),
-            _ => Err(HintParsingError(String::from("unknown hint"))),
+impl From<HintWrapper> for u8 {
+    fn from(v: HintWrapper) -> Self {
+        match v {
+            HintWrapper::Standard(h) => h.into(),
+            HintWrapper::CelestiaDA => 0xda,
         }
     }
 }
 
-// Implement necessary traits for HintWrapper
-impl fmt::Display for HintWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HintWrapper::Standard(hint) => write!(f, "{hint}"),
-            HintWrapper::CelestiaDA => write!(f, "celestia-da"),
+impl TryFrom<u8> for HintWrapper {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0xda => Ok(HintWrapper::CelestiaDA),
+            other => Ok(HintWrapper::Standard(HintType::try_from(other)?)),
         }
     }
 }
